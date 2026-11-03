@@ -1,2 +1,1 @@
-// Public-safe placeholder. Private travel data must never be committed to GitHub.
-window.INITIAL_TRIPS = [];
+// 個人データを公開リポジトリに含めないための空ファイルです。\n
