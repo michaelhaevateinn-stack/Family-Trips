@@ -2,7 +2,7 @@
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/13.2.0/firebase-app.js';
 import {getAuth,GoogleAuthProvider,signInWithPopup,onAuthStateChanged,signOut} from 'https://www.gstatic.com/firebasejs/13.2.0/firebase-auth.js';
 import {getFirestore,doc,getDoc,setDoc,onSnapshot,serverTimestamp} from 'https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js';
-import {getStorage,ref,uploadString,getDownloadURL} from 'https://www.gstatic.com/firebasejs/13.2.0/firebase-storage.js';
+import {getStorage,ref,uploadString,uploadBytes,getDownloadURL} from 'https://www.gstatic.com/firebasejs/13.2.0/firebase-storage.js';
 const config={apiKey:'AIzaSyB1A7Znwf9-I_7H89AXwsPeINn5VhmThpc',authDomain:'family-trips-6f940.firebaseapp.com',projectId:'family-trips-6f940',storageBucket:'family-trips-6f940.firebasestorage.app',messagingSenderId:'400857202870',appId:'1:400857202870:web:26511f27483fe9d230a617'};
 const app=initializeApp(config),auth=getAuth(app),db=getFirestore(app),storage=getStorage(app);
 const el=id=>document.getElementById(id), OWNER='kNg13uQp72bBQFDhZeqUZmnT0dp2';
@@ -36,4 +36,18 @@ el('closeAccount').onclick=()=>el('authPanel').classList.add('hidden');
 el('loginBtn').onclick=async()=>{el('authPanel').classList.toggle('hidden');if(auth.currentUser){update(auth.currentUser);return}try{message('Googleログインを開いています…');await signInWithPopup(auth,new GoogleAuthProvider())}catch(e){message('ログイン失敗：'+(e.code||e.message))}};
 el('logoutBtn').onclick=async()=>{try{await signOut(auth)}catch(e){message('ログアウト失敗：'+e.message)}};
 el('copyUidBtn').onclick=async()=>{try{await navigator.clipboard.writeText(auth.currentUser?.uid||'');message('UIDをコピーしました')}catch{message('UIDを長押ししてコピーしてください')}};
+
+window.familyGalleryUpload=async(tripId,file)=>{
+ if(!enabled||!user||user.uid!==OWNER)throw Error('クラウド同期を有効にしてください');
+ const bitmap=await createImageBitmap(file);
+ const scale=Math.min(1,1600/bitmap.width,1600/bitmap.height);
+ const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(bitmap.width*scale));canvas.height=Math.max(1,Math.round(bitmap.height*scale));
+ canvas.getContext('2d').drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close();
+ const blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('画像変換に失敗')),'image/jpeg',.8));
+ const id=(crypto.randomUUID?.()||String(Date.now())+'-'+Math.random().toString(36).slice(2));
+ const path='galleries/'+encodeURIComponent(String(tripId))+'/'+id+'.jpg';
+ const obj=ref(storage,path);await uploadBytes(obj,blob,{contentType:'image/jpeg'});
+ return {url:await getDownloadURL(obj),storagePath:path};
+};
+
 onAuthStateChanged(auth,async u=>{update(u);await prepare()},e=>message('認証エラー：'+e.message));
