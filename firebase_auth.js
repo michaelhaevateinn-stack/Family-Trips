@@ -39,10 +39,10 @@ el('copyUidBtn').onclick=async()=>{try{await navigator.clipboard.writeText(auth.
 
 window.familyGalleryUpload=async(tripId,file)=>{
  if(!enabled||!user||user.uid!==OWNER)throw Error('クラウド同期を有効にしてください');
- const bitmap=await createImageBitmap(file);
+ const bitmap=typeof createImageBitmap==='function'?await createImageBitmap(file):await new Promise((resolve,reject)=>{const img=new Image();const u=URL.createObjectURL(file);img.onload=()=>{URL.revokeObjectURL(u);resolve(img)};img.onerror=()=>{URL.revokeObjectURL(u);reject(Error('画像を読み込めません'))};img.src=u});
  const scale=Math.min(1,1600/bitmap.width,1600/bitmap.height);
  const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(bitmap.width*scale));canvas.height=Math.max(1,Math.round(bitmap.height*scale));
- canvas.getContext('2d').drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close();
+ canvas.getContext('2d').drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close?.();
  const blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('画像変換に失敗')),'image/jpeg',.8));
  const id=(crypto.randomUUID?.()||String(Date.now())+'-'+Math.random().toString(36).slice(2));
  const path='galleries/'+encodeURIComponent(String(tripId))+'/'+id+'.jpg';
