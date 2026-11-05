@@ -1,0 +1,31 @@
+【Firestore】Firebase Console → Firestore Database → ルール
+既存のルールを確認し、以下のように夫婦2人だけを許可してください。
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /familyTrips/{document} {
+      allow read, write: if request.auth != null && request.auth.uid in [
+        'kNg13uQp72bBQFDhZeqUZmnT0dp2',
+        'HBIDO1884kWrxDnUwtSfXuzE1dD3'
+      ];
+    }
+  }
+}
+
+【Storage】Firebase Console → Storage → ルール
+
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if request.auth != null && request.auth.uid in [
+        'kNg13uQp72bBQFDhZeqUZmnT0dp2',
+        'HBIDO1884kWrxDnUwtSfXuzE1dD3'
+      ];
+    }
+  }
+}
+
+注意: 上記はこのアプリ専用Firebaseプロジェクトを前提にした例です。
+同じプロジェクトで他のデータを扱っている場合、既存ルールを不用意に置き換えないでください。
