@@ -25,13 +25,42 @@ el('familyClose').onclick=()=>el('familyEditor').style.display='none';
 el('familyAdd').onclick=()=>{collectFamily();familyMembers.push({name:'',birth:''});renderFamily()};
 el('familySave').onclick=async()=>{if(!user||!ALLOWED_UIDS.has(user.uid)){familyStatus('本人のGoogleアカウントでログインしてください');return}collectFamily();if(familyMembers.some(m=>!m.name||!/^\d{4}-\d{2}-\d{2}$/.test(m.birth))){familyStatus('全員の名前と誕生日を入力してください');return}try{familyStatus('☁ 保存中…');await setDoc(familyRef,{members:familyMembers,updatedAt:serverTimestamp()});window.familyTripsFamily=familyMembers.map(m=>({...m}));familyStatus('☁ 家族設定を保存しました');const selected=window.familyTripsSelected?.();if(selected)window.familyTripsRefresh?.(selected)}catch(e){familyStatus('保存失敗：'+(e.code||e.message))}};
 async function loadFamily(){try{const snap=await getDoc(familyRef);familyMembers=(snap.exists()?snap.data().members:[])||[];window.familyTripsFamily=familyMembers.map(m=>({...m}));renderFamily();familyStatus('☁ 家族設定を読み込みました')}catch(e){familyStatus('家族設定の読込失敗：'+(e.code||e.message))}}
-async function prepare(){if(unsub){unsub();unsub=null}enabled=false;window.familyCloudSave=null;el('cloudMigrate').style.display='none';el('cloudReload').style.display='none';if(!user){familyMembers=[];window.familyTripsFamily=[];return}if(!ALLOWED_UIDS.has(user.uid)){status('このアカウントにはまだアクセス権がありません。');return}try{await loadFamily();const snap=await getDoc(cloudRef);if(!snap.exists()){status('クラウドは空です。初回移行で、この端末の旅程と写真を送信できます。');el('cloudMigrate').style.display='inline-block';return}const remote=snap.data().trips||[];const local=safeTrips();if(!local.length){restore(remote);lastSerialized=JSON.stringify(remote);enable();status('☁ クラウド'+remote.length+'件を取得・Firebase保存有効');el('cloudReload').style.display='inline-block';return}if(JSON.stringify(local)===JSON.stringify(remote)){lastSerialized=JSON.stringify(remote);enable();restore(remote);status('☁ クラウドと旧端末データ一致・Firebase保存有効');}else{status(`クラウド${remote.length}件と旧端末データ${local.length}件に差があります。旧データを残したままです。必要なら「⚙ データ」でJSONバックアップ後、「クラウドを読み込む」を押してください。`);}el('cloudReload').style.display='inline-block';}catch(e){status('接続確認失敗：'+(e.code||e.message))}}
+async function prepare(){
+ if(unsub){unsub();unsub=null}
+ enabled=false;window.familyCloudSave=null;clearTimeout(debounce);
+ window.familyTripsBootState?.('loading');
+ restore([]);
+ el('cloudMigrate').style.display='none';el('cloudReload').style.display='none';
+ if(!user){familyMembers=[];window.familyTripsFamily=[];status('Googleログイン後にクラウドから旅行データを読み込みます。');return}
+ if(!ALLOWED_UIDS.has(user.uid)){status('このアカウントにはアクセス権がありません。');return}
+ status('☁ クラウドから旅行データを読み込み中…');
+ try{
+  const snap=await getDoc(cloudRef);
+  if(!snap.exists()){
+   status('クラウドに旅行データがありません。JSONバックアップから初回登録できます。');
+   window.familyTripsBootState?.('ready');
+   el('cloudMigrate').style.display='inline-block';
+   await loadFamily();return;
+  }
+  const remote=snap.data().trips;
+  if(!Array.isArray(remote))throw Error('クラウドの旅行データ形式が不正です');
+  restore(remote);lastSerialized=JSON.stringify(remote);enable();
+  window.familyTripsBootState?.('ready');
+  el('cloudReload').style.display='inline-block';
+  status('☁ クラウドから'+remote.length+'件を読み込みました・保存可能');
+  await loadFamily();
+ }catch(e){status('⚠ 読み込み失敗：'+(e.code||e.message)+'。編集を停止しています。通信を確認して再試行してください。');el('cloudReload').style.display='inline-block';}
+}
 async function cloudSave(){if(!enabled||!user||!ALLOWED_UIDS.has(user.uid))return;if(working){pending=true;return}working=true;try{status('☁ 保存中…');const source=safeTrips();const cloud=[];for(const t of source){let item={...t};if(typeof item.cover==='string'&&item.cover.startsWith('data:image/')){const path='covers/'+encodeURIComponent(String(item.id))+'/'+Date.now();const obj=ref(storage,path);await uploadString(obj,item.cover,'data_url');item.cover=await getDownloadURL(obj);item.coverStoragePath=path;}cloud.push(item)}await setDoc(cloudRef,{trips:cloud,updatedAt:serverTimestamp(),schema:1});lastSerialized=JSON.stringify(cloud); // replace local data URLs only after cloud upload succeeds
 if(source.length===safeTrips().length){const latest=safeTrips();for(let i=0;i<latest.length;i++){if(latest[i].id===cloud[i].id&&latest[i].cover?.startsWith('data:image/')&&cloud[i].coverStoragePath){latest[i].cover=cloud[i].cover;latest[i].coverStoragePath=cloud[i].coverStoragePath}}window.familyTripsSet?.(latest)}status('☁ 保存済み · '+new Date().toLocaleTimeString('ja-JP'));}catch(e){status('⚠ クラウド保存失敗（画面内に未保存の変更があります）：'+(e.code||e.message)+'。通信を確認し、再保存してください。再読み込みしないでください。');}finally{working=false;if(pending){pending=false;cloudSave()}}}
 function schedule(){if(!enabled)return;clearTimeout(debounce);status('☁ 変更を保存待ち…');debounce=setTimeout(cloudSave,800)}
 function enable(){enabled=true;window.familyCloudSave=schedule;status('☁ 自動保存が有効です');}
 el('cloudMigrate').onclick=async()=>{const local=safeTrips();if(!local.length){status('端末に旅程がありません。まずJSONを読み込んでください。');return}if(!confirm(`端末の${local.length}件をFirebaseに初回登録します。写真も送信します。実行前にJSONバックアップを保存しましたか？`))return;enabled=true;await cloudSave();if(enabled&&lastSerialized){enable();el('cloudMigrate').style.display='none';el('cloudReload').style.display='inline-block';}};
-el('cloudReload').onclick=async()=>{try{await loadFamily();const snap=await getDoc(cloudRef);if(!snap.exists()){status('クラウドにデータがありません');return}const remote=snap.data().trips||[],local=safeTrips();if(local.length&&!confirm(`クラウド${remote.length}件を読み込みます。端末の${local.length}件と差がある場合、端末側の内容が置き換わります。事前バックアップを確認してください。`))return;restore(remote);lastSerialized=JSON.stringify(remote);enable();status('☁ クラウド読込完了・自動保存有効');el('cloudMigrate').style.display='none';}catch(e){status('読込失敗：'+(e.code||e.message))}};
+el('cloudReload').onclick=async()=>{
+ if(working||pending||debounce){status('⚠ 保存待ちの変更があります。保存完了を確認してください。');return}
+ if(enabled&&JSON.stringify(safeTrips())!==lastSerialized){if(!confirm('未保存の変更がある可能性があります。クラウドから読み直して破棄しますか？'))return}
+ await prepare();
+};
 el('closeAccount').onclick=()=>el('authPanel').classList.add('hidden');
 el('loginBtn').onclick=async()=>{el('authPanel').classList.toggle('hidden');if(auth.currentUser){update(auth.currentUser);return}try{message('Googleログインを開いています…');await signInWithPopup(auth,new GoogleAuthProvider())}catch(e){message('ログイン失敗：'+(e.code||e.message))}};
 el('logoutBtn').onclick=async()=>{try{await signOut(auth)}catch(e){message('ログアウト失敗：'+e.message)}};
